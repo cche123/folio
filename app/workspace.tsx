@@ -324,14 +324,31 @@ export default function Workspace() {
   }
   async function upload(fs: FileList | null) {
     if (!fs?.length) return;
-    if (!c || c.demo) {
-      setNewOpen(true);
-      setNotice('Create or open a company before uploading its documents.');
-      return;
-    }
     setBusy('Importing documents');
-    let co = current()!;
     try {
+      let co: Company;
+      if (!c || c.demo) {
+        const inferredName = Array.from(fs)[0].name
+          .replace(/\.[^.]+$/, '')
+          .replace(/[-_]+/g, ' ')
+          .replace(/\b(10k|10q|annual report|financials?|investor deck)\b/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        co = {
+          id: crypto.randomUUID(),
+          name: inferredName || 'New company',
+          ticker: 'PRIVATE',
+          description: '',
+          currency: 'USD',
+          points: [],
+          docs: [],
+          memo: '',
+        };
+        await persist(co);
+        openCompany(co);
+      } else {
+        co = current()!;
+      }
       for (const file of Array.from(fs)) {
         if (file.size > 12000000)
           throw Error('Each document must be under 12 MB.');
@@ -572,7 +589,13 @@ export default function Workspace() {
           </div>
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset>
+      <SidebarInset
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (e.dataTransfer.files.length) void upload(e.dataTransfer.files);
+        }}
+      >
         <header className="topbar">
           <SidebarTrigger />
           <span>
@@ -632,10 +655,8 @@ export default function Workspace() {
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
-                setNewOpen(true);
-                setNotice(
-                  'Create a company, then drop its documents into the workspace.',
-                );
+                e.stopPropagation();
+                void upload(e.dataTransfer.files);
               }}
             >
               <Upload size={29} />
@@ -656,11 +677,15 @@ export default function Workspace() {
                   Search SEC <ArrowUpRight size={16} />
                 </Button>
               </div>
-              <button className="text-button" onClick={() => setNewOpen(true)}>
-                Create a company & upload documents <ChevronRight size={14} />
+              <button
+                className="text-button"
+                onClick={() => input.current?.click()}
+              >
+                Drop files here or choose documents <ChevronRight size={14} />
               </button>
               <small>
-                Free SEC data · PDF & text source library · CSV financial import
+                CSV builds the model · PDF/TXT creates a source workspace · 12 MB
+                per file
               </small>
             </section>
             {matches.length > 0 && (
@@ -1596,6 +1621,7 @@ export default function Workspace() {
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     void upload(e.dataTransfer.files);
                   }}
                 >
